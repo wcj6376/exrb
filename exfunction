@@ -1,5 +1,5 @@
 #!/system/xbin/bash
-#构建exboot函数库20181215
+#构建exboot函数库20190401
 Help (){
 echo 
  "exboot函数用法
@@ -139,8 +139,9 @@ fi
 
 #6.1选择文件指定扩展名
 Xzfile () {
+Pwd=$(pwd)
  if [ ! -e *.$1 ] &> $null;then
- echo "当前目录无$1文件，自动退出"
+ echo "当前目录$Pwd无$1文件，自动退出"
 sleep 1
  exit
  fi
@@ -199,6 +200,55 @@ sleep 1
 		local i=1
 IFS=$'\n'
 		for item in $(ls *$2*.$1); do
+			if [[ -f $item ]]; then
+				apks[$i]="$item"
+				let i++
+		fi
+		done
+   
+#ls *.$1|while read i;do echo "$i";done
+		echo "请选择文件:"
+	local len="${#apks[@]}"
+	for (( i = 1; i <= len; i++ )); do
+   Size=`Filesize0 "${apks[$i]}"`
+		echo " ($i). ${apks[$i]}" $Size
+	done
+
+IFS=$' \t\n'
+local inp	
+	if ((len < 10)); then
+		read -n1 -p "请选择:" inp
+	else
+		read -n2 -p "请选择:" inp
+	fi
+clear
+	if [[ "$inp" == "0" ]] || [ -z $inp ] || [[ "$inp" -gt "len" ]]; then
+echo "选择错误，自动返回..."
+sleep 1
+exit 1
+	else
+ #替换空格
+ #mv "`echo ${apks[$inp]} | sed 's/#/ /g' `" "`echo ${apks[$inp]} |sed 's/#//g' `"  2> /dev/null   
+#自动去空格
+ mv "${apks[$inp]}" $(echo ${apks[$inp]}|tr -d ' ') 2>/dev/null  
+#export	file="${apks[$inp]}"   
+export	 file=$(echo ${apks[$inp]}|tr -d ' ')
+Filesize "$file"
+  fi
+}
+
+#6.选择文件任何
+Xwj () {
+ if [ ! -e *$1* ] &> $null;then
+ echo "当前目录无$1文件，自动退出"
+sleep 1
+ exit
+ fi
+
+	 local item=""
+		local i=1
+IFS=$'\n'
+		for item in $(ls *$1*); do
 			if [[ -f $item ]]; then
 				apks[$i]="$item"
 				let i++
@@ -1607,7 +1657,24 @@ fi
 
 DATSYSTEM (){
 clear
+echo
+echo "使用这项功能前，你需把线刷包里的｛*.list和*.dat｝文件放于$SYSPATH目录"
+sleep 2
+cd $SYSPATH
+Xzfile dat
+if [ -f $file ] && [ -f *.list ] ;then
+#IMGFR="`file -m $tbin/magic $file|busybox grep ":"|busybox awk '{print $2}'`"
+echo "正在解包dat，时间较长，请耐心等待..."
+echo
+#sdat2img *.list $file system.img  &
+wait 
+sdat2img.py *.list $file system.img  &
+wait 
 
+else
+echo "缺少list文件" && sleep 1 && exit
+fi    
+   [ -f system.img ] && echo "解包$file成功" && Filesize system.img && sleep 1 || echo "解包$file失败!" && sleep 1 && exit  
 }
 
 BRSYSTEM (){
@@ -1623,7 +1690,7 @@ clear
 echo "  华为app解包工具"
 echo
 cd $SYSTEM
-Xzflie app
+Xzfile app
 echo "请注意空间，时间稍长需耐心等待..."
 unpackapp $file
 if [ "$?"==0 ];then
@@ -1640,9 +1707,10 @@ clear
 echo "    酷派cpb解包工具"
 echo
 cd $SYSTEM
-Xzflie cpb
+Xzfile cpb
 echo "请注意空间，时间稍长需耐心等待..."
-cpbtool $file
+Cpb=$(which cpbtool)
+[ ! -z $Cpb ] && cpbtool $file || unpackcpb $file
 if [ "$?"==0 ];then
 echo "$curfile解压成功！"
 else
@@ -1658,7 +1726,7 @@ echo "   一加payload.bin解包工具"
 echo
 cd $SYSTEM
 cp -rf $tbin/get-pip.py $tbin/payload_dumper.py $tbin/update_metadata_pb2.py ./
-Xzflie bin
+Xzfile bin
 echo "如解包不成功，请安装python3后运行，方法：curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py ，
 python get-pip.py,pip install protobuf"
 echo "请注意空间要足够大，时间稍长，需耐心等待"

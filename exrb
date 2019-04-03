@@ -1,6 +1,6 @@
 #!/system/xbin/bash
-#更新日期(仅为移植boot/recovery而精简 )
-export version=20190101
+#更新日期(static编译无需依赖库，python除外 )
+export version=20190331
 
 #0主文件夹变量，可自己修改。
 Path () {
@@ -59,7 +59,7 @@ export update_dir=$exboot/update
 export update=$exboot/update
 export backup=$exboot/backup
 export test=$exboot/test
-export TOOLPATH=/data/exrb
+export TOOLPATH=/data/exrb/AIK-Linux
 export T=$TOOLPATH
 [ ! -d $T ] && echo "请将文件复制到$T目录下，权限全开再运行！" && sleep 2 && mkdir -p $T && cp -rf $exboot/exrb/* $T && chmod -R 777 $T
 export tool=$exboot/tool
@@ -88,10 +88,12 @@ export AIKPATH=$T
 export AIK=$DATA
 export MKTOOL=$tbin
 export MKPATH=$DATA/bin
+export SYSPATH=$exboot/system
+export SYSTEM=$SYSPATH
 }
 Envpath
 
-export PATH=/system/xbin:/system/bin:/data/exrb/bin:/sbin:/bin:$PATH
+export PATH=/system/xbin:/system/bin:/data/exrb/bin:/data/exrb/AIK-Linux/bin/linux/arm:/data/exrb/AIK-Linux/bin/linux/aarch64:/sbin:/bin:$PATH
 #在线更新,部分curl不支持，故注释了
 gx (){ 
 export kis="https://raw.githubusercontent.com/wcj6376/EXBOOT/master"
@@ -208,6 +210,7 @@ sleep 2
 Bac (){
 echo
 read -n1 -t8 -p "按回车键继续..."
+#Main
 }
 
 #7准备移植工具Tool $AIK $MKTOOL
@@ -358,6 +361,31 @@ rm -rf $rb *.cpio &> $null
   Bac
 }
 
+Yjdx () {
+clear
+tpath=/data/exrb/AIK-Linux
+[ ! -d $tpath ] && mkdir -p $tpath 
+[ ! -d $rb ] && mkdir -p $tpath/$rb 
+
+echo "      解包打包$rb.img " 
+sleep 1
+cd $BOOTPATH
+Xcfile img $rb
+  cp -rf $file $tpath/$rb.img
+  cd $tpath
+./unpackimg.sh $rb.img
+
+read -n1 -p "解包完成，请自行修改$tpath目录下文件，回车后开始打包..."
+echo
+./repackimg.sh 
+[ -f image-new.img ] && cp -rf image-new.img $BOOTPATH/new-$rb.img && echo "打包成功!"  || echo "打包失败！请换种方式。" && sleep 1
+cd $BOOTPATH
+  [ -f new-$rb.img ] && Filesize new-$rb.img
+read -t8 -p "自动清理文件..." 
+cd $tpath
+rm -rf split_* ramdisk* $rb *.img &> $null
+  Bac
+}
 
 #一键移植
 YjEXAIK () {
@@ -850,6 +878,8 @@ echo "-6-  自助移植 $rb  (荐)   "
 echo
 echo "-7-  解包打包 $rb.cpio (新)  "
 echo
+echo "-8-  解包打包 $rb (新)  "
+echo
 read -n1 -p "请选择：" inp
 [ -z $inp ] && Main
 case $inp in
@@ -860,6 +890,7 @@ case $inp in
         5|t)  Upda $rb Recovery;;
         6|y)  YjEXAIK $rb Recovery;;
         7|u)  Yjd ;;
+        8|i)  Yjdx ;;
         0|p) exit;;
 
 esac
@@ -881,6 +912,8 @@ echo "-5-  制作卡刷 $rb     "
 echo
 echo "-6-  自动移植 $rb  (新)   "
 echo
+echo "-7-  解包打包 $rb  (新)   "
+echo
 read -n1 -p "请选择：" inp
 [ -z $inp ] && Main
 case $inp in
@@ -890,9 +923,260 @@ case $inp in
         4|r)  Back $rb Boot;;
         5|t)  Upda $rb Boot;;
         6|y)  YjEXAIK $rb Boot;;
+        7|u)  Yjdx;;
         0|p) exit;;
         
 esac
+}
+
+#转换rom
+Checkfile (){
+filelx=$SYSPATH/filelx
+file $1 > $filelx 2>&1
+export filetlxs=$(cat $filelx |grep "sparse"|awk '{print $3}')
+export filelxr=$(cat $filelx |grep "ext4"|awk '{print $5}')
+[ ! -z $filelxs ] && [ "$filelxs" == "sparse" ] && echo "$1 $filelxs"
+[ ! -z $filelxr ] && [ $filelxr == "ext4" ] && echo "$1 格式为 $filelxr"
+rm -f $filelx
+}
+
+SYSTEM(){
+$bb clear
+echo -e "请将sparse格式的img文件放到$SYSPATH文件夹,转换后的文件不能再转换为dat格式但可直接mount !"
+sleep 1
+cd $SYSPATH
+Xzfile img
+Checkfile $file
+if [ $filelx == "sparse" ];then
+echo "正在转换，时间较长请稍候…"
+[ $file == system.img ] && mv -f system.img system.img.bak && simg2img system.img.bak system.img || simg2img $file $file-1.img
+[ -f $file-1.img ] && echo "转换完成！" && Filesize $file-1.img || echo "转换失败，请检查所选文件是否是simg格式"
+else
+[ $filelxr == "ext4" ] && echo "$file 格式 $filelxr ，可直接mount ! " || echo "$file 不是sparse格式,不用转换！" 
+sleep 1
+fi
+Main
+}
+
+#br转换dat
+Brsystem (){
+clear 
+echo "    br转换dat工具"
+echo
+cd $SYSPATH 
+Xzfile br 
+brotli -d $file
+name=${file%.*}
+cd $SYSPATH
+[ -f $name ] && echo "制作完成！" && Filesize $name
+key
+Main
+}
+
+#dat转换br
+datbr(){
+clear && cd $SYSPATH && Xzfile dat
+brotli -q 6 $file
+cd $SYSPATH
+[ -f $file.br ] && echo "制作完成！" && Filesize $file.br
+key
+Main
+}
+
+#1 dat转换rimg
+Dat2img (){
+echo
+echo "使用这项功能前，你需把线刷包里的｛*.list和*.dat｝文件放于$SYSPATH目录"
+sleep 2
+cd $SYSPATH
+Xzfile dat
+if [ -f $file ] && [ -f *.list ] ;then
+#IMGFR="`file -m $tbin/magic $file|busybox grep ":"|busybox awk '{print $2}'`"
+echo "正在解包dat，时间较长，请耐心等待..."
+echo
+Sdat=$(which sdat2img)
+[ ! -z $Sdat ] && sdat2img *.list $file system.img  & wait || sdat2img.py *.list $file system.img  & wait 
+else
+echo "缺少list文件" && sleep 1 && exit
+fi    
+   [ -f system.img ] && echo "解包$file成功" && Filesize system.img && sleep 1 || echo "解包$file失败!" && sleep 1 && exit  
+Main
+}
+
+
+CPBSYSTEM (){
+clear
+echo "    酷派cpb解包工具"
+echo
+cd $SYSPATH
+Xzfile cpb
+echo "请注意空间，时间稍长需耐心等待..."
+Cpb=$(which cpbtool)
+[ ! -z $Cpb ] && cpbtool $file || unpackcpb $file
+if [ "$?"==0 ];then
+echo "$curfile解压成功！"
+else
+echo "$curfile解压失败！"
+fi
+read -t5 -p "回车键退出..."
+Main
+}
+
+APPSYSTEM (){
+clear
+echo "  华为app解包工具"
+echo
+cd $SYSPATH
+Xzfile app
+echo "请注意空间，时间稍长需耐心等待..."
+Unpackapp=$(which unpackapp)
+[ ! -z $Unpackapp ] && unpackapp $file || unpackapp.py $file
+if [ "$?"==0 ];then
+echo "$curfile解压成功！"
+else
+echo "$curfile解压失败！"
+fi
+read -t5 -p "回车键退出..."
+Main
+}
+
+Ozipsystem (){
+clear
+echo "  VIVO ozip解包工具"
+echo
+cd $SYSPATH
+Xzfile ozip
+echo "请注意空间，时间稍长需耐心等待..."
+ozip2zip.py $file
+if [ "$?"==0 ];then
+echo "$curfile解压成功！"
+else
+echo "$curfile解压失败！"
+fi
+read -t5 -p "回车键退出..."
+Main
+}
+
+
+Binsystem (){
+tbin=/data/exrb/AIK-Linux/bin/linux/python
+clear
+echo "   一加payload.bin解包工具"
+echo
+cd $SYSTEM
+cp -rf $tbin/get-pip.py $tbin/payload_dumper.py $tbin/update_metadata_pb2.py ./
+Xzfile bin
+echo "如解包不成功，请安装python3后运行，方法：curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py ，
+python get-pip.py,pip install protobuf"
+echo "请注意空间要足够大，时间稍长，需耐心等待"
+python payload_dumper.py $file
+if [ "$?"==0 ];then
+echo "$curfile解压成功！"
+else
+echo "$curfile解压失败！"
+fi
+read -t5 -p "回车键退出..."
+}
+
+Mountsystem (){
+clear
+echo "  挂载system.img(ext4)工具"
+echo
+cd $SYSPATH
+Xzfile img
+Checkfile $file
+[ "$filelxs" == "sparse" ] && echo "$filelxs格式不能挂载" && exit
+if [ "$filelxr" == "ext4" ] ;then
+AB=/data/AB
+[ ! -d $AB ] && mkdir -p $AB
+busybox mount -t ext4 $file $AB
+cd $AB
+if [ -d bin ];then
+echo "挂载成功！"
+ls
+read -p "回车将自动卸载..."
+cd / && busybox umount $AB 
+else
+echo "挂载失败！"
+fi
+else
+echo "不是ext4格式不能挂载"
+fi
+read -t3 -p "回车键退出..."
+Main
+}
+
+System () {
+source exfunction
+$bb clear
+Cyan ">>   System 定制工具"
+echo
+Green " -1- 定制 IMG  system" 
+echo
+Green " -2- 定制 DAT  system" 
+echo
+Green " -3- 定制 BR   system" 
+echo
+Green " -4- 定制 APP  system" 
+echo
+Green " -5- 定制 CPB  system" 
+echo
+Green " -6- 定制 BIN  system" 
+echo
+Green " -7- 定制 OZIP  system" 
+echo
+Green " -8- 挂载 ext4  system" 
+echo
+read -n1 -p "请选择：" inp
+  [ -z $inp ] && Main
+case $inp in
+        1|q)  SYSTEM ;;
+        2|w) Dat2img;;
+        3|e) Brsystem;;
+        4|r) APPSYSTEM;;
+        5|t) CPBSYSTEM;;
+        6|y) Binsystem;;
+        7|u) Ozipsystem;;
+        8|i) Mountsystem ;;
+        0|p) exit;;
+esac
+Main
+}
+
+#高级功能
+Gjgn (){
+$bb clear
+echo
+Cyan "     拓展定制工具"
+echo
+Green " -1- 增加 GCC " 
+echo
+Red " -2- 增加 JAVA " 
+echo
+Magenta " -3- 增加 PERL " 
+echo
+Yellow " -4- 安装ubuntu环境" 
+echo
+Blue " -5- 安装 debian 环境" 
+echo
+read -n1 -p "请选择：" inp
+  [ -z $inp ] && Main
+case $inp in
+        1|q)  Gccinstall ;;
+        2|w) Javainstall;;
+        3|e) Perlinstall;;
+        4|r) Ubuntu;;
+        5|t) Debian;;
+        0|p) exit;;
+esac
+Main
+}
+
+#在线更新
+Helpup(){
+echo "即将在线更新所需插件，请先链接wifi！"
+sleep 3
+Main
 }
 
 Main (){
@@ -908,24 +1192,43 @@ lunar_day=`echo "$nl"|awk -F"-" '{print $3}'`
     fi
 #DATE=`date "+%Y"-"%m"-"%d $nlrq $xqj %H"："%M"："%S"""`
 #echo "  $DATE"
-echo "$DATE$nlrq$xqj"
-echo "   解包移植 Boot & Recovery 工具"
-echo "             ($version)"
+Red "$DATE$nlrq$xqj"
+Blue "   解包移植 Boot & Recovery 工具"
+Yellow "             ($version)"
 sleep 1
 [ ! -e /usr/local/share/figlet/standard.flf ] && mkdir -p /usr/local/share/figlet && cp -rf /data/exrb/bin/standard.flf /usr/local/share/figlet/standard.flf &>$null
 [ ! -e /system/xbin/figlet ] && cp -rf /data/exrb/bin/figlet /system/xbin/figlet && chmod 777 /system/xbin/figlet 
 [ -e /usr/local/share/figlet/standard.flf ] && figlet EXRB 
-read -n1 -t8 -p "请输入b/r/q:" inp
-if [ "$inp" == "q" -o "$inp" == "Q" ];then
-$bb clear
-Clean
-exit
-elif [ "$inp" == "r" -o "$inp" == "R" ];then
- rb=recovery && exrb=Recovery 
-else
- rb=boot && exrb=Boot
-fi
-$exrb
+
+Cyan "           精简定制工具"
+echo
+Green " -1- 移植 BOOT" 
+echo "            (解包移植boot.img)"
+echo
+Yellow " -2- 移植 RECOVERY" 
+echo "            (解包移植recovery.img)"
+echo
+Magenta " -3- 定制 ROM" 
+echo "            (转换各种system格式)"
+echo
+Blue " -4- 高级功能" 
+echo "            (拓展功能区)"
+echo
+Yellow " -5- 在线更新" 
+echo "            (用法提示)"
+echo
+Red " -0- 退出 EXIT"
+echo
+read -n1 -p "请选择：" inp
+  [ -z $inp ] && exit
+case $inp in
+        1|q)   rb=boot && Boot ;;
+        2|w)  rb=recovery && Recovery ;;
+        3|e)  System ;;
+        4|r) Gjgn;;
+        5|t) Helpup;;
+        0|p) Clean && echo && exit;;
+esac
 }
  Main
 
